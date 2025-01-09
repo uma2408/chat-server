@@ -1,0 +1,71 @@
+import java.io.*;
+import java.net.*;
+import java.util.*;
+
+public class ChatServer {
+    private static final int PORT = 12345; // Port number
+    private static Set<Socket> clientSockets = Collections.synchronizedSet(new HashSet<>());
+
+    public static void main(String[] args) {
+        System.out.println("Chat server started...");
+        try (ServerSocket serverSocket = new ServerSocket(PORT)) {
+            while (true) {
+                Socket clientSocket = serverSocket.accept();
+                clientSockets.add(clientSocket);
+                System.out.println("New client connected: " + clientSocket.getInetAddress());
+                new ClientHandler(clientSocket).start();
+            }
+        } catch (IOException e) {
+            System.err.println("Server error: " + e.getMessage());
+        }
+    }
+
+    static class ClientHandler extends Thread {
+        private Socket socket;
+        private BufferedReader in;
+        private PrintWriter out;
+
+        public ClientHandler(Socket socket) {
+            this.socket = socket;
+        }
+
+        public void run() {
+            try {
+                in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                out = new PrintWriter(socket.getOutputStream(), true);
+
+                // Notify all clients of the new connection
+                broadcastMessage("A new user has joined the chat!");
+
+                String message;
+                while ((message = in.readLine()) != null) {
+                    System.out.println("Message received: " + message);
+                    broadcastMessage(message);
+                }
+            } catch (IOException e) {
+                System.err.println("Client disconnected: " + e.getMessage());
+            } finally {
+                try {
+                    clientSockets.remove(socket);
+                    socket.close();
+                    broadcastMessage("A user has left the chat.");
+                } catch (IOException e) {
+                    System.err.println("Error closing socket: " + e.getMessage());
+                }
+            }
+        }
+
+        private void broadcastMessage(String message) {
+            synchronized (clientSockets) {
+                for (Socket client : clientSockets) {
+                    try {
+                        PrintWriter clientOut = new PrintWriter(client.getOutputStream(), true);
+                        clientOut.println(message);
+                    } catch (IOException e) {
+                        System.err.println("Error broadcasting message: " + e.getMessage());
+                    }
+                }
+            }
+        }
+    }
+}
